@@ -3,11 +3,8 @@ version: '3.8'
 services:
   backend:
     container_name: foodgram-backend
-    build:
-      context: ../backend
-      dockerfile: ../infra/Dockerfile
+    image: ${DOCKER_HUB_USERNAME}/foodgram-backend:${DOCKER_TAG:-latest}
     volumes:
-      - ../backend:/app
       - static_volume:/app/static
       - media_volume:/app/media
     environment:
@@ -23,11 +20,8 @@ services:
 
   frontend:
     container_name: foodgram-front
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    image: ${DOCKER_HUB_USERNAME}/foodgram-front:${DOCKER_TAG:-latest}
     volumes:
-      - ../frontend/build:/usr/share/nginx/html
       - static_volume:/usr/share/nginx/html/static
       - media_volume:/usr/share/nginx/html/media
     restart: always

@@ -13,46 +13,37 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from users.models import User, Follow
 from recipes.models import (
-    Recipe, Ingredient, Tag, IngredientInRecipe, Favorite, ShoppingCart
+    Recipe, Ingredient, IngredientInRecipe, Favorite, ShoppingCart
 )
 from .serializers import (
     UserSerializer, UserWithRecipesSerializer, SetAvatarSerializer,
     SetAvatarResponseSerializer, IngredientSerializer, RecipeListSerializer,
     RecipeCreateSerializer, RecipeMinifiedSerializer,
     RecipeGetShortLinkSerializer, SetPasswordSerializer,
-    TokenCreateSerializer, TokenGetResponseSerializer, TagSerializer,
+    TokenCreateSerializer, TokenGetResponseSerializer,
     CustomUserCreateSerializer
 )
 from .permissions import IsAuthorOrReadOnly
 from .pagination import CustomPagination
 from .filters import IngredientFilter, RecipeFilter
+from django.conf import settings
 
 # New registration view
 class CustomUserRegistrationView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        print("Debug: CustomUserRegistrationView POST called")
-        print(f"Debug: Request data: {request.data}")
-        
         data = request.data.copy()
         if 're_password' not in data:
             data['re_password'] = data.get('password', '')
-            print(f"Debug: Added re_password: {data['re_password']}")
 
         serializer = CustomUserCreateSerializer(data=data)
-        if serializer.is_valid():
-            print("Debug: Serializer is valid")
-            print(f"Debug: Validated data: {serializer.validated_data}")
-            user = serializer.save()
-            print(f"Debug: User created: {user}")
-            print(f"Debug: User password: {user.password}")
-            return Response(
-                UserSerializer(user).data,
-                status=status.HTTP_201_CREATED
-            )
-        print(f"Debug: Serializer errors: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            UserSerializer(user).data,
+            status=status.HTTP_201_CREATED
+        )
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -102,12 +93,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         following = get_object_or_404(User, id=pk)
         if request.method == 'POST':
-            if user == following:
-                return Response(
-                    {'errors': 'Нельзя подписаться на себя'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if Follow.objects.filter(user=user, following=following).exists():
+            if following.follower.filter(user=user).exists():
                 return Response(
                     {'errors': 'Уже подписаны'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -139,43 +125,29 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return RecipeListSerializer
 
     def create(self, request, *args, **kwargs):
-        try:
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            recipe = self.perform_create(serializer)
-            response_serializer = RecipeListSerializer(recipe, context={'request': request})
-            headers = self.get_success_headers(serializer.data)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-        except Exception as e:
-            print(f"Debug: Ошибка при создании рецепта: {str(e)}")
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        recipe = self.perform_create(serializer)
+        response_serializer = RecipeListSerializer(recipe, context={'request': request})
+        headers = self.get_success_headers(serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         return serializer.save()
 
     def update(self, request, *args, **kwargs):
-        try:
-            instance = self.get_object()
-            serializer = self.get_serializer(instance, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
-            return Response(serializer.data)
-        except Exception as e:
-            print(f"Debug: Error updating recipe: {str(e)}")  # Debug
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post', 'delete'], permission_classes=[IsAuthenticated])
     def favorite(self, request, pk=None):
         user = request.user
         recipe = get_object_or_404(Recipe, id=pk)
         if request.method == 'POST':
-            if Favorite.objects.filter(user=user, recipe=recipe).exists():
+            if recipe.favorites.filter(user=user).exists():
                 return Response(
                     {'errors': 'Рецепт уже в избранном'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -192,7 +164,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         user = request.user
         recipe = get_object_or_404(Recipe, id=pk)
         if request.method == 'POST':
-            if ShoppingCart.objects.filter(user=user, recipe=recipe).exists():
+            if recipe.in_shopping_cart.filter(user=user).exists():
                 return Response(
                     {'errors': 'Рецепт уже в списке покупок'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -207,7 +179,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def get_link(self, request, pk=None):
         recipe = get_object_or_404(Recipe, id=pk)
-        short_link = f'https://foodgram.example.org/s/{recipe.id}'
+        short_link = f'{settings.BASE_URL}/s/{recipe.id}'
         return Response({'short-link': short_link}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
@@ -236,12 +208,6 @@ class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
 
-class TagViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-    pagination_class = None
-
-
 class AuthTokenView(APIView):
     permission_classes = [AllowAny]
 
@@ -250,16 +216,13 @@ class AuthTokenView(APIView):
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data.get('email')
         password = serializer.validated_data.get('password')
-        print(f"Debug: Received data: email={email}, password={password}")  # Debug
         user = authenticate(request, email=email, password=password)
         if user:
-            print(f"Debug: User found: {user}")  # Debug
             token, _ = Token.objects.get_or_create(user=user)
             return Response(
                 {'auth_token': token.key},
                 status=status.HTTP_200_OK
             )
-        print("Debug: User not found or invalid password")  # Debug
         return Response(
             {'detail': 'Неверные учетные данные'},
             status=status.HTTP_401_UNAUTHORIZED
@@ -281,13 +244,7 @@ class SetPasswordView(APIView):
     def post(self, request):
         serializer = SetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        if not request.user.check_password(
-            serializer.validated_data['current_password']
-        ):
-            return Response(
-                {'current_password': 'Неверный пароль'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        request.user.set_password(serializer.validated_data['new_password'])
-        request.user.save()
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
         return Response(status=status.HTTP_204_NO_CONTENT)

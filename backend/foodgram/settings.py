@@ -78,23 +78,23 @@ TEMPLATES = [
 WSGI_APPLICATION = 'foodgram.wsgi.application'
 
 # Настройки базы данных
-DATABASES = {
-    'default': dj_database_url.config(
-        default='sqlite:///' + str(BASE_DIR / 'db.sqlite3'),
-        conn_max_age=600
-    )
-}
-
 # DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'foodgram',
-#         'USER': 'postgres',
-#         'PASSWORD': '8091',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
+#     'default': dj_database_url.config(
+#         default='sqlite:///' + str(BASE_DIR / 'db.sqlite3'),
+#         conn_max_age=600
+#     )
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'foodgram',
+        'USER': 'postgres',
+        'PASSWORD': '8091',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
 
 # Аутентификация
 AUTH_USER_MODEL = 'users.User'

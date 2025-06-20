@@ -115,3 +115,43 @@ python manage.py load_ingredients
 ### Администрирование
 Для доступа к админ-панели используйте учетные данные суперпользователя, созданного при настройке проекта.
 
+# Новые возможности и интеграции
+
+## 1. Новые API эндпоинты
+
+- **/api/users/{id}/info/** — GET, информация о пользователе по id (публично)
+- **/api/users/without_recipes/** — GET, список пользователей без рецептов (публично)
+- **/api/recipes/filter_by_ingredients/?ingredients=1,2,3** — GET, рецепты с любым из указанных ингредиентов (публично)
+- **/api/auth/password-reset/** — POST, сброс пароля по email (публично)
+- **/api/password-reset-confirm/{user_id}/{token}/** — POST, подтверждение сброса пароля (публично)
+
+## 2. WebSocket-функционал
+
+- **ws://<host>/ws/echo/** — EchoConsumer: возвращает обратно любое полученное сообщение
+- **ws://<host>/ws/notify/** — NotifyConsumer: отправляет приветствие при подключении и уведомление при получении сообщения
+
+## 3. Google OAuth2 (Вход через Google)
+
+- Поддержка входа через Google-аккаунт с помощью social-auth-app-django
+- Настроены все необходимые параметры, client_id и client_secret
+- Для работы нужно добавить redirect_uri вида:
+  - `http://127.0.0.1:8000/api/auth/complete/google-oauth2/` (или ваш production-адрес) в Google Cloud Console
+- URL для входа: `/api/auth/login/google-oauth2/`
+
+## 4. Публичные GET API
+
+- Все GET-запросы (включая кастомные action-методы) теперь доступны без авторизации
+
+## 5. GitHub Actions: автоматическое тестирование
+
+- В проект добавлен workflow `.github/workflows/tests.yml`
+- При каждом push/pull request в main:
+  - Разворачивается PostgreSQL
+  - Устанавливаются зависимости
+  - Применяются миграции
+  - Запускаются Django unittest (`python backend/manage.py test`)
+
+---
+
+**Все новые возможности подробно описаны выше в README. Если нужно добавить примеры запросов или расширить документацию — дайте знать!**
+

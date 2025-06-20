@@ -30,6 +30,7 @@ class User(AbstractUser):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    password_reset_token = models.CharField(max_length=128, null=True, blank=True)
 
     objects = CustomUserManager()
 

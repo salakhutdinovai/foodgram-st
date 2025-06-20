@@ -9,3 +9,5 @@ django-filter==25.1
 django-cors-headers==4.7.0
 python-dotenv
 dj-database-url==2.1.0
+django-channels
+social-auth-app-django

@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'djoser',
     'django_filters',
     'corsheaders',
+    'social_django',
     # Собственные приложения
     'users.apps.UsersConfig',
     'recipes.apps.RecipesConfig',
@@ -48,6 +49,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'social_django.middleware.SocialAuthExceptionMiddleware',
 ]
 
 # CORS-настройки для фронтенда
@@ -69,6 +71,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'social_django.context_processors.backends',
+                'social_django.context_processors.login_redirect',
             ],
         },
     },
@@ -99,7 +103,8 @@ DATABASES = {
 # Аутентификация
 AUTH_USER_MODEL = 'users.User'
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailBackend',  # Только EmailBackend в приоритете
+    'social_core.backends.google.GoogleOAuth2',
+    'users.backends.EmailBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
 
@@ -174,3 +179,9 @@ LOGIN_URL = '/admin/login/'
 
 # Base URL for the application
 BASE_URL = 'https://foodgram.example.org'
+
+# --- Google OAuth2 ---
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = '186577939257-22l6nraf0tf8q48q8kf1a0ldaaa4abse.apps.googleusercontent.com'
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = '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'
+SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = ['email', 'profile']
+SOCIAL_AUTH_GOOGLE_OAUTH2_EXTRA_DATA = ['first_name', 'last_name']

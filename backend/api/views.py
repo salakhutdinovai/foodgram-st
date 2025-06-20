@@ -27,6 +27,9 @@ from .permissions import IsAuthorOrReadOnly
 from .pagination import CustomPagination
 from .filters import IngredientFilter, RecipeFilter
 from django.conf import settings
+from django.core.mail import send_mail
+from django.utils.crypto import get_random_string
+from django.urls import reverse
 
 
 class CustomUserRegistrationView(APIView):
@@ -53,7 +56,7 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'info', 'without_recipes']:
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -130,13 +133,32 @@ class UserViewSet(viewsets.ModelViewSet):
         follow.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=['get'], url_path='info', permission_classes=[AllowAny])
+    def info(self, request, pk=None):
+        user = get_object_or_404(User, id=pk)
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='without_recipes', permission_classes=[AllowAny])
+    def without_recipes(self, request):
+        users = User.objects.filter(recipes__isnull=True).distinct()
+        page = self.paginate_queryset(users)
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
 
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = Recipe.objects.all()
-    permission_classes = [IsAuthorOrReadOnly, IsAuthenticated]
+    permission_classes = [IsAuthorOrReadOnly]
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_class = RecipeFilter
+
+    def get_permissions(self):
+        # Все GET-запросы доступны всем
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [AllowAny()]
+        return [IsAuthorOrReadOnly()]
 
     def get_serializer_class(self):
         if self.action in ['create', 'partial_update']:
@@ -232,6 +254,20 @@ class RecipeViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = 'attachment; filename="shopping_list.txt"'
         return response
 
+    @action(detail=False, methods=['get'], url_path='filter_by_ingredients')
+    def filter_by_ingredients(self, request):
+        ingredients_param = request.query_params.get('ingredients')
+        if not ingredients_param:
+            return Response({'error': 'Необходимо указать параметр ingredients'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ingredient_ids = [int(i) for i in ingredients_param.split(',') if i.strip().isdigit()]
+        except ValueError:
+            return Response({'error': 'Некорректный формат параметра ingredients'}, status=status.HTTP_400_BAD_REQUEST)
+        queryset = self.get_queryset().filter(ingredient_in_recipe__ingredient__id__in=ingredient_ids).distinct()
+        page = self.paginate_queryset(queryset)
+        serializer = RecipeListSerializer(page, many=True, context={'request': request})
+        return self.get_paginated_response(serializer.data)
+
 
 class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Ingredient.objects.all()
@@ -281,3 +317,44 @@ class SetPasswordView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({'error': 'Email обязателен'}, status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({'error': 'Пользователь с таким email не найден'}, status=status.HTTP_404_NOT_FOUND)
+        # Генерируем токен (можно хранить в user.profile или в кэше, для простоты — просто строка)
+        token = get_random_string(64)
+        user.password_reset_token = token
+        user.save(update_fields=['password_reset_token'])
+        reset_url = f"{settings.BASE_URL}/password-reset-confirm/{user.pk}/{token}/"
+        send_mail(
+            'Сброс пароля',
+            f'Для сброса пароля перейдите по ссылке: {reset_url}',
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        return Response({'detail': 'Письмо для сброса пароля отправлено'}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, user_id, token):
+        new_password = request.data.get('new_password')
+        if not new_password:
+            return Response({'error': 'Необходимо указать новый пароль'}, status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.filter(id=user_id, password_reset_token=token).first()
+        if not user:
+            return Response({'error': 'Неверная ссылка или токен'}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(new_password)
+        user.password_reset_token = None
+        user.save()
+        return Response({'detail': 'Пароль успешно изменён'}, status=status.HTTP_200_OK)
